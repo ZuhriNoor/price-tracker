@@ -3,11 +3,21 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import os
-import requests
+import traceback
+import time
+import random
+import hashlib
+import json
 import re
-from apscheduler.schedulers.background import BackgroundScheduler
+from dotenv import load_dotenv
+
+# ADDED: Imports for new logic
+import google.generativeai as genai   # ✅ same import
 from playwright.sync_api import sync_playwright
-from random import randint
+from apscheduler.schedulers.background import BackgroundScheduler
+
+# -------------------- ENVIRONMENT --------------------
+load_dotenv()
 
 # -------------------- Flask app setup --------------------
 app = Flask(__name__)
@@ -15,6 +25,25 @@ app.secret_key = os.environ.get("FLASK_SECRET", "change-this-secret")
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///trackmydeal.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+
+# -------------------- Gemini Configuration --------------------
+# ❌ OLD CODE (remove this):
+# genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+# model = genai.GenerativeModel("gemini-2.5-flash")
+
+# ✅ NEW CODE:
+api_key = os.environ.get("GOOGLE_API_KEY")
+if not api_key:
+    print("--- IMPORTANT: GOOGLE_API_KEY not set in .env ---")
+    client = None
+    model_name = None
+else:
+    try:
+        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+        model = genai.GenerativeModel("gemini-2.5-flash")
+    except Exception as e:
+        print(f"--- IMPORTANT: Gemini API not configured. Please set GOOGLE_API_KEY. Error: {e} ---")
+        model = None
 
 # -------------------- MODELS --------------------
 class User(db.Model):
@@ -36,7 +65,6 @@ class Product(db.Model):
     target_price = db.Column(db.Float, nullable=False)
     current_price = db.Column(db.Float)
     added_date = db.Column(db.DateTime, default=datetime.utcnow)
-
     price_history = db.relationship("PriceHistory", backref="product", lazy=True)
     alerts = db.relationship("Alert", backref="product", lazy=True)
     comparisons = db.relationship("Comparison", backref="product", lazy=True)
@@ -54,7 +82,7 @@ class Alert(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey("products.product_id"), nullable=False)
     alert_date = db.Column(db.DateTime, default=datetime.utcnow)
     price_at_alert = db.Column(db.Float)
-    status = db.Column(db.String(50))  # "pending" or "sent"
+    status = db.Column(db.String(50))
 
 class Comparison(db.Model):
     __tablename__ = "comparison"
@@ -64,130 +92,119 @@ class Comparison(db.Model):
     product_url = db.Column(db.Text, nullable=False)
     added_date = db.Column(db.DateTime, default=datetime.utcnow)
 
-# -------------------- Playwright Scraper --------------------
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/140.0.7339.129 Safari/537.36"
-}
-
-def scrape_price_playwright(url):
-    """Scrape title and price using Playwright (robust for Amazon)"""
-    from playwright.sync_api import sync_playwright
-    import re
-
+# -------------------- Scraper + Gemini Logic --------------------
+def clean_price(price_str: str) -> float | None:
+    """Utility to convert price string from Gemini to float."""
+    if not price_str or not isinstance(price_str, str):
+        return None
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto(url, timeout=60000)
-            page.wait_for_load_state("networkidle")
-            
-            # Wait extra just in case Amazon dynamically loads price
-            page.wait_for_timeout(3000)
+        cleaned = re.sub(r"[₹,]", "", price_str).strip()
+        return float(cleaned)
+    except (ValueError, TypeError):
+        return None
 
-            # Try selectors first
-            price_selectors = [
-                "#priceblock_ourprice",
-                "#priceblock_dealprice",
-                "#priceblock_saleprice",
-                "span.a-price > span.a-offscreen",
-                "span.a-price-whole"
-            ]
-
-            price = None
-            for selector in price_selectors:
-                el = page.query_selector(selector)
-                if el:
-                    price_text = el.inner_text().replace("₹", "").replace(",", "").strip()
-                    if price_text:
-                        try:
-                            price = float(price_text)
-                            break
-                        except:
-                            continue
-
-            # Fallback to regex on whole page if no selector worked
-            if price is None:
-                text = page.inner_text("body")
-                match = re.search(r"(?:₹|Rs\.?)\s?[\d,]+(?:\.\d{1,2})?", text)
-                if match:
-                    price = float(match.group(0).replace("₹", "").replace("Rs", "").replace(".", "").replace(",", "").strip())
-
-            # Extract title (first long line in body text)
-            text = page.inner_text("body")
-            lines = [line.strip() for line in text.split("\n") if line.strip()]
-            title = None
-            for line in lines:
-                if len(line) > 15:
-                    title = line
-                    break
-
-            browser.close()
-            return price, url, title
-
+def extract_with_gemini(image_bytes: bytes) -> dict:
+    """Extracts data from a screenshot using Gemini."""
+    if not model:
+        print("Gemini model not initialized. Skipping extraction.")
+        return {"title": None, "price": None}
+    try:
+        response = model.generate_content([
+            {"mime_type": "image/png", "data": image_bytes},
+            "Extract the product name and price from this screenshot. "
+            "Return as strict JSON with keys: 'title' and 'price'. Do not use markdown."
+        ])
+        text = response.text.strip().replace("```json", "").replace("```", "")
+        data = json.loads(text)
+        return data
     except Exception as e:
-        print("Playwright scrape error:", e)
-        return None, url, None
+        print(f"Gemini extraction failed: {e}")
+        return {"title": None, "price": None, "raw": response.text if 'response' in locals() else 'No response'}
 
-# -------------------- Scheduler Job --------------------
-SCHEDULER_INTERVAL_MINUTES = int(os.environ.get('POLL_MINUTES', 30))
+def fetch_product_data(url: str, max_retries: int = 3) -> dict:
+    """Fetches screenshot and extracts data using Gemini with backoff."""
+    delay = 1.0
+    for attempt in range(1, max_retries + 1):
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=False, args=["--no-sandbox"])
+                context = browser.new_context(
+                    viewport={"width": 1280, "height": 800},
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                )
+                page = context.new_page()
+                page.goto(url, timeout=30000)
+                page.wait_for_load_state("domcontentloaded", timeout=20000)
+                time.sleep(2)
 
+                image = page.screenshot(clip={
+                    "x": 300,
+                    "y": 200,
+                    "width": 600,
+                    "height": 400
+                })
+                browser.close()
+
+                data = extract_with_gemini(image)
+                return {
+                    "title": data.get("title"),
+                    "price": clean_price(data.get("price")),
+                    "url": url
+                }
+        except Exception as e:
+            print(f"[Attempt {attempt}] Playwright failed for {url}: {e}")
+            if attempt < max_retries:
+                sleep_time = delay + random.uniform(0, delay * 0.5)
+                print(f"Retrying in {sleep_time:.2f}s...")
+                time.sleep(sleep_time)
+                delay *= 2
+            else:
+                print("Max retries exceeded.")
+    return {"title": None, "price": None, "url": url}
+
+# -------------------- Scheduler --------------------
 def poll_all_products():
     with app.app_context():
-        print('[scheduler] Polling products for price updates at', datetime.utcnow())
+        print(f'[Scheduler] Polling products for price updates at {datetime.utcnow()}')
         products = Product.query.all()
-        
+
         for prod in products:
             try:
-                # Scrape current price using your existing Playwright function
-                price, _, _ = scrape_price_playwright(prod.url)
-                
+                data = fetch_product_data(prod.url)
+                price = data.get("price")
+
                 if price is not None:
-                    # 1. Update Product.current_price
                     prod.current_price = price
-                    
-                    # 2. Add a new row in PriceHistory
                     db.session.add(PriceHistory(product_id=prod.product_id, price=price))
-                    
-                    # 3. Commit changes to database
+                    if price <= prod.target_price:
+                        existing_alert = Alert.query.filter_by(product_id=prod.product_id, status="pending").first()
+                        if not existing_alert:
+                            db.session.add(Alert(product_id=prod.product_id, price_at_alert=price, status="pending"))
+                            print(f"[Scheduler] !!! PRICE ALERT for '{prod.product_name}' !!!")
+
                     db.session.commit()
-                    
-                    print(f"[scheduler] Updated '{prod.product_name}' to ₹{price}")
+                    print(f"[Scheduler] Updated '{prod.product_name}' to ₹{price}")
                 else:
-                    print(f"[scheduler] Price not found for '{prod.product_name}'")
-                    
+                    print(f"[Scheduler] Price not found for '{prod.product_name}'")
             except Exception as e:
-                print(f"[scheduler] Error updating product {prod.product_id}: {e}")
+                db.session.rollback()
+                print(f"[Scheduler] Error updating product {prod.product_id}: {e}")
 
-
-# -------------------- Scheduler Setup --------------------
-
-# Set interval (minutes) — you can change for testing
-SCHEDULER_INTERVAL_MINUTES = 180  # for testing, you can set 1
-
-# Initialize scheduler
+SCHEDULER_INTERVAL_MINUTES = 180
 scheduler = BackgroundScheduler()
-
-# Add the polling job
 scheduler.add_job(
-    func=poll_all_products,            # function to run
-    trigger='interval',                 # run periodically
-    minutes=SCHEDULER_INTERVAL_MINUTES,# interval in minutes
-    id='poller',                        # job id
-    replace_existing=True               # replace if already exists
+    func=poll_all_products,
+    trigger='interval',
+    minutes=SCHEDULER_INTERVAL_MINUTES,
+    id='poller',
+    replace_existing=True
 )
-
-# Function to start scheduler
 def start_scheduler():
     try:
         scheduler.start()
         print(f'[scheduler] Started successfully, polling every {SCHEDULER_INTERVAL_MINUTES} minutes')
     except Exception as e:
         print('[scheduler] Could not start scheduler:', e)
-
-# Start the scheduler
-start_scheduler()
 
 # -------------------- Routes --------------------
 @app.route('/')
@@ -242,27 +259,37 @@ def track():
 
     if request.method == 'POST':
         url = request.form.get('url')
-        try: threshold = float(request.form.get('threshold', 0))
-        except: threshold = 0.0
-        name = request.form.get('name')
+        try:
+            threshold = float(request.form.get('threshold', 0))
+        except (ValueError, TypeError):
+            threshold = 0.0
+        
+        print(f"Fetching data for URL: {url}")
+        data = fetch_product_data(url)
+        price = data.get("price")
+        title = data.get("title")
 
-        price, final_url, title = scrape_price_playwright(url)
+        if not title:
+            flash("❌ Could not extract product details. Please check the URL.", "error")
+            return redirect(url_for('track'))
+
         new_product = Product(
-            product_name=name if name else title,
-            url=final_url if final_url else url,
+            product_name=title,
+            url=url,
             user_id=user_id,
             target_price=threshold,
             current_price=price
         )
         db.session.add(new_product)
         db.session.flush()
+
         if price is not None:
             db.session.add(PriceHistory(product_id=new_product.product_id, price=price))
-            db.session.commit()
-            flash(f"✅ {new_product.product_name} added! Current price ₹{price}.", "success")
+            flash(f"✅ '{new_product.product_name}' added! Current price is ₹{price}.", "success")
         else:
-            db.session.commit()
-            flash("⚠️ Product added, initial price fetch failed.", "warning")
+            flash(f"⚠️ '{new_product.product_name}' added, but we couldn't fetch the initial price.", "warning")
+        
+        db.session.commit()
         return redirect(url_for('track'))
 
     products = Product.query.filter_by(user_id=user_id).all()
@@ -290,8 +317,9 @@ def compare():
 
 # -------------------- Main --------------------
 if __name__ == '__main__':
-    if not os.path.exists('trackmydeal.db'):
-        with app.app_context():
+    with app.app_context():
+        if not os.path.exists('trackmydeal.db'):
             db.create_all()
+            print("Database created.")
     start_scheduler()
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)
