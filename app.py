@@ -295,13 +295,28 @@ def track():
     products = Product.query.filter_by(user_id=user_id).all()
     return render_template('track.html', products=products)
 
+# In your app.py file
+
 @app.route('/trend', methods=['GET','POST'])
 def trend():
     if 'user' not in session:
         return redirect(url_for('login'))
+        
     user_id = session['user']
     products = Product.query.filter_by(user_id=user_id).all()
-    return render_template('trend.html', products=products)
+    selected_product_id = None
+
+    if request.method == 'POST':
+        # Get the product ID from the submitted form
+        product_id = request.form.get('product_id')
+        if product_id:
+            selected_product_id = int(product_id)
+    
+    return render_template(
+        'trend.html', 
+        products=products, 
+        selected_product_id=selected_product_id
+    )
 
 @app.route('/trend_data/<int:product_id>')
 def trend_data(product_id):

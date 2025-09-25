@@ -1,36 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Trend Analysis{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center mt-5">
-  <div class="col-md-8">
+  <div class="col-md-10 col-lg-8">
     <div class="card p-4 shadow-lg border-0">
-      <h3 class="text-center text-success mb-3">Trend Analysis</h3>
+      <h3 class="text-center text-success mb-3">📈 Trend Analysis</h3>
       <p class="text-muted text-center">
-        Select a tracked product or enter a new product URL to view its price trend (graph).
+        Select one of your tracked products to view its price history.
       </p>
 
-      <form method="POST">
-        <!-- Dropdown for tracked products -->
+      <form method="POST" id="trendForm">
         <div class="mb-3">
-          <label class="form-label">Choose from your tracked products</label>
-          <select class="form-select" name="product_id">
+          <label for="productSelect" class="form-label">Choose from your tracked products</label>
+          <select class="form-select" name="product_id" id="productSelect">
             <option value="">-- Select a Product --</option>
             {% for product in products %}
-              <option value="{{ product.product_id }}">{{ product.product_name or product.url }}</option>
+              <option value="{{ product.product_id }}" {% if product.product_id == selected_product_id %}selected{% endif %}>
+                {{ product.product_name or product.url }}
+              </option>
             {% endfor %}
           </select>
         </div>
-
-        <!-- OR enter a new product -->
-        <div class="mb-3">
-          <label class="form-label">Or enter a new Product URL</label>
-          <input type="url" name="url" class="form-control">
-        </div>
-
         <div class="d-grid">
-          <button class="btn btn-success">Analyze Trend</button>
+          <button type="submit" class="btn btn-success">Analyze Trend</button>
         </div>
       </form>
+
+      <div class="mt-4">
+        <canvas id="priceChart"></canvas>
+      </div>
 
       <a href="{{ url_for('menu') }}" class="btn btn-secondary mt-3">Back to Menu</a>
     </div>
@@ -38,3 +37,66 @@
 </div>
 {% endblock %}
 
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // 1. Auto-submit form when a product is selected from the dropdown
+    const productSelect = document.getElementById('productSelect');
+    productSelect.addEventListener('change', function() {
+      if (this.value) {
+        document.getElementById('trendForm').submit();
+      }
+    });
+
+    // 2. Check if the backend passed a selected_product_id
+    const productId = {{ selected_product_id|tojson }};
+    
+    if (productId) {
+      // 3. Fetch the price history data from our API endpoint
+      fetch(`/trend_data/${productId}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.length === 0) return;
+
+          // 4. Prepare data for Chart.js
+          const labels = data.map(item => new Date(item.date).toLocaleDateString());
+          const prices = data.map(item => item.price);
+          
+          // 5. Render the chart
+          const ctx = document.getElementById('priceChart').getContext('2d');
+          new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Price (₹)',
+                data: prices,
+                borderColor: 'rgb(25, 135, 84)',
+                backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                fill: true,
+                tension: 0.1
+              }]
+            },
+            options: {
+              responsive: true,
+              scales: {
+                y: {
+                  beginAtZero: false,
+                  ticks: {
+                    callback: function(value, index, values) {
+                      return '₹' + value.toLocaleString();
+                    }
+                  }
+                }
+              }
+            }
+          });
+        })
+        .catch(error => console.error('Error fetching trend data:', error));
+    }
+  });
+</script>
+{% endblock %}
