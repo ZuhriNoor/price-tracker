@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Track Product{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-5">
+  <div class="col-md-6">
+    <div class="card p-4 shadow-lg border-0">
+      <h3 class="text-center text-primary mb-3">Track a Product</h3>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} mt-2">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+      <form method="POST">
+        <div class="mb-3">
+          <label class="form-label">Product URL</label>
+          <input type="url" name="url" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Threshold Price (₹)</label>
+          <input type="number" name="threshold" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Product Name (optional)</label>
+          <input type="text" name="name" class="form-control">
+        </div>
+        <div class="d-grid">
+          <button class="btn btn-primary">Start Tracking</button>
+        </div>
+      </form>
+      <hr>
+      <h5 class="mt-4">Your Tracked Products</h5>
+      <ul class="list-group">
+        {% for product in products %}
+          <li class="list-group-item">
+            <strong>{{ product.product_name }}</strong><br>
+            Current Price: ₹{{ product.current_price if product.current_price else "Not fetched yet" }}<br>
+            Target Price: ₹{{ product.target_price }}<br>
+            Platforms:
+            <ul>
+              {% for c in product.comparison %}
+                <li>{{ c.platform }} - <a href="{{ c.product_url }}" target="_blank">{{ c.product_url }}</a></li>
+              {% endfor %}
+            </ul>
+          </li>
+        {% else %}
+          <li class="list-group-item text-muted">No products tracked yet.</li>
+        {% endfor %}
+      </ul>
+
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+

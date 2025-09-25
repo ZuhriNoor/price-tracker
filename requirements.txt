@@ -1,0 +1,5 @@
+flask
+flask_sqlalchemy
+playwright
+bs4
+requests
