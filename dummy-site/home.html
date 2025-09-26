@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TestMart - Dummy E-commerce Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f7fafc; }
+    </style>
+</head>
+<body>
+
+    <!-- Header/Navbar -->
+    <nav class="bg-gray-800 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="home.html" class="font-bold text-xl">TestMart</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mx-auto mt-8 p-4">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-10">Our Products</h1>
+
+        <!-- This wrapper makes the content area narrower, thus making the cards smaller -->
+        <div class="max-w-4xl mx-auto">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                
+                <!-- Product 1: Smartwatch Link -->
+                <div class="bg-white rounded-lg shadow-xl overflow-hidden transform hover:scale-105 transition-transform duration-300">
+                    <a href="watch.html" class="block">
+                        <img src="watch.png" alt="Smartwatch X1" class="w-full object-cover">
+                        <div class="p-6">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-2">Classic Smartwatch X1</h2>
+                            <p class="text-gray-600 mb-4">Your perfect companion for a connected life. GPS, Heart Rate, and more.</p>
+                            <span id="price-smartwatch" class="text-xl font-bold text-green-600">₹8,999.00</span>
+                            <div class="mt-4 text-center">
+                               <span class="inline-block bg-blue-900 text-white font-bold py-2 px-6 rounded-md">View Details</span>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <!-- Product 2: Wireless Earbuds Link -->
+                <div class="bg-white rounded-lg shadow-xl overflow-hidden transform hover:scale-105 transition-transform duration-300 ">
+                    <a href="earbuds.html" class="block">
+                        <img src="earbuds.png" alt="AudioPods Pro" class="w-full object-cover">
+                        <div class="p-6">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-2">AudioPods Pro</h2>
+                            <p class="text-gray-600 mb-4">Immersive sound with active noise cancellation.</p>
+                            <span id="price-earbuds" class="text-xl font-bold text-green-600">₹12,490.00</span>
+                             <div class="mt-4 text-center">
+                               <span class="inline-block bg-blue-900 text-white font-bold py-2 px-6 rounded-md">View Details</span>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Function to update the price on the homepage from localStorage
+            const updateHomepagePrice = (productId, elementId) => {
+                const savedPrice = localStorage.getItem(productId);
+                if (savedPrice) {
+                    const priceElement = document.getElementById(elementId);
+                    if (priceElement) {
+                        const formattedPrice = new Intl.NumberFormat('en-IN', {
+                            style: 'currency',
+                            currency: 'INR',
+                            minimumFractionDigits: 2
+                        }).format(savedPrice);
+                        priceElement.textContent = formattedPrice;
+                    }
+                }
+            };
+
+            // Update prices for both products on page load
+            updateHomepagePrice('smartwatchX1', 'price-smartwatch');
+            updateHomepagePrice('earbudsPro', 'price-earbuds');
+        });
+    </script>
+
+</body>
+</html>
+

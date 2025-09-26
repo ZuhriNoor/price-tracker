@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classic Smartwatch X1 - TestMart</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f7fafc; }
+    </style>
+</head>
+<body>
+
+    <!-- Header/Navbar -->
+    <nav class="bg-gray-800 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="home.html" class="font-bold text-xl">TestMart</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mx-auto mt-8 p-4">
+        <div class="bg-white rounded-lg shadow-xl overflow-hidden p-6 md:p-12">
+            <a href="home.html" class="text-blue-600 hover:underline mb-6 inline-block">&larr; Back to all products</a>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                <!-- Product Image -->
+                <div>
+                    <!-- This wrapper makes the image smaller and centers it -->
+                    <div class="max-w-md ml-40">
+                        <img src="watch.png" alt="Smartwatch X1" class="w-full h-auto rounded-lg shadow-md">
+                    </div>
+                </div>
+
+                <!-- Product Details & Price Editor -->
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">Classic Smartwatch X1</h1>
+                    <p class="text-gray-600 mb-4">Your perfect companion for a connected life. GPS, Heart Rate, and more.</p>
+                    
+                    <div class="mb-6">
+                        <span class="text-4xl font-bold text-green-600" id="price-display-1">₹8,999.00</span>
+                        <span class="text-gray-500 text-sm ml-2">including all taxes</span>
+                    </div>
+
+                    <div class="bg-gray-100 p-4 rounded-lg border border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-2">Modify Price for Testing</h3>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="price-input-1" placeholder="Enter new price" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <button id="update-btn-1" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition duration-200">Update</button>
+                        </div>
+                        <p id="update-status-1" class="text-sm mt-2 h-4"></p>
+                    </div>
+
+                    <div class="mt-6">
+                        <h2 class="text-xl font-semibold text-gray-800 mb-3">Key Features</h2>
+                        <ul class="list-disc list-inside text-gray-700 space-y-2">
+                            <li>5-day Battery Life</li>
+                            <li>Water Resistant up to 50m</li>
+                            <li>AMOLED Touch Display</li>
+                            <li>Built-in GPS and NFC</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const productId = 'smartwatchX1'; // Unique key for localStorage
+            const updateBtn = document.getElementById('update-btn-1');
+            const priceInput = document.getElementById('price-input-1');
+            const priceDisplay = document.getElementById('price-display-1');
+            const statusEl = document.getElementById('update-status-1');
+
+            // --- ADDED: Load price from localStorage on page start ---
+            const loadPrice = () => {
+                const savedPrice = localStorage.getItem(productId);
+                if (savedPrice) {
+                    const formattedPrice = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(savedPrice);
+                    priceDisplay.textContent = formattedPrice;
+                }
+            };
+
+            loadPrice(); // Call the function on page load
+
+            updateBtn.addEventListener('click', () => {
+                const newPrice = parseFloat(priceInput.value);
+                statusEl.textContent = '';
+                statusEl.classList.remove('text-red-500', 'text-green-500');
+                
+                if (isNaN(newPrice) || newPrice <= 0) {
+                    statusEl.textContent = 'Please enter a valid price.';
+                    statusEl.classList.add('text-red-500');
+                } else {
+                    // --- ADDED: Save the new price to localStorage ---
+                    localStorage.setItem(productId, newPrice);
+
+                    const formattedPrice = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(newPrice);
+                    priceDisplay.textContent = formattedPrice;
+                    statusEl.textContent = 'Price updated successfully!';
+                    statusEl.classList.add('text-green-500');
+                    priceInput.value = '';
+                }
+
+                setTimeout(() => { statusEl.textContent = ''; }, 3000);
+            });
+        });
+    </script>
+</body>
+</html>
+
