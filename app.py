@@ -138,10 +138,10 @@ def fetch_product_data(url: str, max_retries: int = 3) -> dict:
                 time.sleep(2)
 
                 image = page.screenshot(clip={
-                    "x": 300,
+                    "x": 200,
                     "y": 200,
                     "width": 600,
-                    "height": 400
+                    "height": 450
                 })
                 browser.close()
 
@@ -190,7 +190,7 @@ def poll_all_products():
                 db.session.rollback()
                 print(f"[Scheduler] Error updating product {prod.product_id}: {e}")
 
-SCHEDULER_INTERVAL_MINUTES = 180
+SCHEDULER_INTERVAL_MINUTES = 10
 scheduler = BackgroundScheduler()
 scheduler.add_job(
     func=poll_all_products,
